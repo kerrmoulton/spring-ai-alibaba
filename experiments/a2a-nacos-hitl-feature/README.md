@@ -47,3 +47,46 @@ separately by the root task.
 Root independently confirmed that the user personally initialized and logged into Nacos console,
 then visually inspected server_business version 1.0.0, endpoint http://127.0.0.1:18081/a2a,
 protocol 0.2.5, JSONRPC and streaming enabled. No administrator password was read or set by agents.
+
+## Actual Chrome UI acceptance
+
+Without restarting or rebuilding the running services, the dedicated experiment page was tested
+through native Chrome UI clicks on 2026-10-18. Runtime source commit remains
+`402886b2d6299150aed0c1c5206a88606a937e80`; later documentation commits change no runtime code.
+
+- `browser_feature_approve_001`, thread `e8123cb0-bdf1-42d6-a3f3-1e7af9cae3ae`:
+  actual remote approval card, click Approve then a real browser `dblclick()` on
+  Submit All Feedback. Before: reads=1/writes=0; afterward: reads=1/writes=1.
+- `browser_feature_reject_001`, thread `9166b225-262b-4a9a-914a-29a66bfa43a2`:
+  actual Reject then Submit, visible rejection result, reads=1/writes=0.
+- Submit was disabled before a decision, enabled after choosing, and displayed disabled
+  Submitted afterward (`isEnabled() == false`). The actual double-click did not add a second write.
+- The native card still says Processing/Waiting while the final result is visible below it.
+  This display limitation is documented, not hidden.
+
+Actual screenshots and raw UI-side supporting audit/status are in
+`/Users/cckowin/Documents/Codex/2026-10-18/task/feature-browser-evidence`, with a self-contained
+HTML acceptance report and Library delivery metadata. Original baseline browser observations
+were performed by root and have audit/status JSON; no baseline screenshot file was saved.
+No original screenshot was reconstructed, and baseline was not rerun for these UI checks.
+
+`/repro/status.frameworkCommit` retains a baseline label and does not identify the actual feature
+runtime revision. Use the executable/nested-jar hashes in `lab/evidence/feature/build-provenance.json`.
+
+## Shutdown
+
+Do not stop unrelated services. For the currently verified run, client PID=26308 and remote
+PID=24697; after confirming those PIDs still belong to this experiment:
+
+```bash
+kill 26308 24697
+```
+
+To stop only this experiment's Nacos through its guarded launcher:
+
+```bash
+python3 /Users/cckowin/test/spring-ai-alibaba-lab/nacos-lab.py stop
+```
+
+Start Nacos with the same launcher using `start`; start remote profile, wait for its Nacos
+registration success, then start client profile. Existing services were left running for review.

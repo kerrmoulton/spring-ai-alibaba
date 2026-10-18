@@ -21,6 +21,6 @@ Enable it on a remote client with `A2aRemoteAgent.builder().approvalBridge(true)
 - Approval expiry is 15 minutes. Pending/receipt capacity is bounded at 10,000; receipts are not silently evicted. Reaching the bound fails closed.
 - Parallel/multiple-parent/distributed execution, multi-instance restart recovery, proposal editing and Nacos refresh are not validated by this experiment. Automatic registration and name-based discovery through local Nacos 3.1.2 are validated by the accompanying a2a-nacos-hitl-feature experiment.
 - The client buffers each HTTP interaction before forwarding graph events. This implementation does not promise token-by-token latency.
-- Backend verification uses the actual Studio `/run_sse` and `/resume_sse` endpoints and parsed `tool-confirm` DTOs. Browser visual rendering and clicking remain separately unverified.
+- Backend verification uses the actual Studio `/run_sse` and `/resume_sse` endpoints and parsed `tool-confirm` DTOs. Native Chrome rendering and actual clicks were separately verified in the Nacos experiment on 2026-10-18: browser_feature_approve_001 approved via a real Submit double-click and wrote once; browser_feature_reject_001 rejected and wrote zero. Submitted controls were disabled afterward. The native card still shows Processing/Waiting text alongside the returned final result; this visible UI limitation is retained in the evidence.
 
 The local integration harness and raw HTTP/SSE/business-side-effect evidence accompany the feature deliverable. Focused tests are not the entire framework test suite.
