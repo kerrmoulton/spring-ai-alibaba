@@ -2,6 +2,7 @@
 import concurrent.futures
 import copy
 import json
+import os
 import pathlib
 import urllib.error
 import urllib.request
@@ -9,7 +10,8 @@ import uuid
 
 BASE='http://127.0.0.1:18080'
 REMOTE='http://127.0.0.1:18081'
-OUT=pathlib.Path('/Users/cckowin/test/spring-ai-alibaba-lab/evidence/feature-ui/http')
+LAB=pathlib.Path(os.environ.get('LAB_ROOT',str(pathlib.Path(__file__).resolve().parents[3]/'spring-ai-alibaba-lab')))
+OUT=LAB/'evidence/feature-ui/http'
 OUT.mkdir(parents=True,exist_ok=True)
 RUN='nacos-feature-'+uuid.uuid4().hex[:8]
 RESULTS=[]

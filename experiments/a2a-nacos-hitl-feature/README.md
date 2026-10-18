@@ -22,6 +22,76 @@ The bridge is an opt-in process-local profile for SDK 0.2.5.Beta2. Pending appro
 receipts are in memory, userId is a peer label, and this experiment makes no distributed/crash-safe
 exactly-once guarantee. Business API itself does not deduplicate any writes.
 
+## Clone and run on another computer
+
+Requirements: Git, JDK17 (set `JAVA_HOME`, or Java on PATH), Maven3.6+ (`mvn` on PATH,
+or set `MAVEN`), Python3. No AI API credentials are needed. Bash scripts run on macOS/Linux;
+Windows users can use WSL with JDK/Maven installed inside WSL. Generated Studio UI resources
+are committed, so Node/pnpm and the local UI build lock are unnecessary for this runnable clone.
+Local evidence, compiled JARs, Nacos distributions, caches and private configuration are not in Git.
+
+```bash
+git clone --branch feature/a2a-hitl-bridge https://github.com/kerrmoulton/spring-ai-alibaba.git
+cd spring-ai-alibaba
+export LAB_ROOT="$(cd .. && pwd)/spring-ai-alibaba-lab"
+mkdir -p "$LAB_ROOT/logs"
+bash experiments/a2a-nacos-hitl-feature/build-feature.sh
+```
+
+This builds the required framework modules and app against an isolated Maven repository;
+the historical baseline archive is optional evidence and is not required to build.
+Logs are in `$LAB_ROOT/logs`. The script skips framework tests during compilation.
+
+Before starting the app, install and start **Nacos3.1.2** independently using its official
+distribution/instructions. The repository does not bundle a Nacos server or authentication
+configuration. The original local installation used a separate loopback binding overlay;
+that machine-specific launcher is not part of this clone. Keep a fresh test installation
+private/loopback or access a Nacos instance you control. Preserve its authentication settings.
+Administrator initialization, when prompted, must be completed by the user in Nacos console.
+Official setup: https://nacos.io/en/docs/v3.0/quickstart/quick-start/
+
+Default server address is `127.0.0.1:8848`, namespace `public`. To use a different controlled
+Nacos address, set `SPRING_AI_ALIBABA_A2A_NACOS_SERVER_ADDR` for **both** application terminals.
+Client username/password, only if required by that installation, come from `NACOS_USERNAME`
+and `NACOS_PASSWORD`, or `LAB_CONFIG` pointing to an external properties file. Never commit
+the file or values. That file can set `spring.ai.alibaba.a2a.nacos.server-addr`, `namespace`,
+`username`, and `password`. Do not paste credentials into shell commands or logs. Existing
+Nacos client debug/startup logs may include configuration; keep logs private.
+
+Start remote first in one terminal (with the same LAB_ROOT/environment):
+
+```bash
+bash experiments/a2a-nacos-hitl-feature/run-feature.sh remote
+```
+
+Wait for `Auto register agent server_business ... successfully`, then in a second terminal:
+
+```bash
+bash experiments/a2a-nacos-hitl-feature/run-feature.sh client
+```
+
+Both apps bind loopback: remote18081, client18080. Keep these ports free. Nacos may run on
+another host, but both demo apps must stay together on this computer: the registered card
+and business API deliberately use local loopback addresses. This is not a remote deployment guide.
+
+Open `http://127.0.0.1:18080/chatui/index.html?agent=a2a_sequential`, send
+`create order case=my_unique_case`, then choose Approve or Reject and Submit. Use a new thread
+and unique case for each independent trial. `local_sequential` is the nested local control.
+
+```bash
+python3 experiments/a2a-nacos-hitl-feature/test_feature.py
+curl -fsS http://127.0.0.1:18080/repro/status
+```
+
+The Python harness uses only the standard library, produces six fresh HTTP cases and writes
+raw requests/responses plus `feature-test-results.json` under `$LAB_ROOT/evidence/feature-ui/http`.
+`allPassed: true` means approve=1/reject=0 and replay/concurrent checks passed. The harness
+does not replace actual browser clicks. Stop each foreground app with Ctrl+C; with background
+launches, stop only the PIDs you recorded for this JAR. Leave shared Nacos under its owner's control.
+
+The baseline directory is historical experiment source. Its strict baseline build script was
+used at upstream commit17e26ff6 before applying this branch; it is not the feature quick start.
+
 ## Actual validation on 2026-10-18
 
 Run `python3 test_feature.py` after both profiles are ready. Fresh run
