@@ -50,43 +50,73 @@ protocol 0.2.5, JSONRPC and streaming enabled. No administrator password was rea
 
 ## Actual Chrome UI acceptance
 
-Without restarting or rebuilding the running services, the dedicated experiment page was tested
-through native Chrome UI clicks on 2026-10-18. Runtime source commit remains
-`402886b2d6299150aed0c1c5206a88606a937e80`; later documentation commits change no runtime code.
+The first feature browser run used source `402886b`, with actual approval/double-click and
+rejection evidence archived under `lab/archives/feature-before-ui-20261018`. Its final card
+still displayed Processing/Waiting. The authorized UI finish now resolves this display issue.
 
-- `browser_feature_approve_001`, thread `e8123cb0-bdf1-42d6-a3f3-1e7af9cae3ae`:
-  actual remote approval card, click Approve then a real browser `dblclick()` on
-  Submit All Feedback. Before: reads=1/writes=0; afterward: reads=1/writes=1.
-- `browser_feature_reject_001`, thread `9166b225-262b-4a9a-914a-29a66bfa43a2`:
-  actual Reject then Submit, visible rejection result, reads=1/writes=0.
-- Submit was disabled before a decision, enabled after choosing, and displayed disabled
-  Submitted afterward (`isEnabled() == false`). The actual double-click did not add a second write.
-- The native card still says Processing/Waiting while the final result is visible below it.
-  This display limitation is documented, not hidden.
+Current runtime source is `96a0be7844b6ce4cb27a9a7f25e3ecc5a64b1bb0`; the later evidence-documentation
+commit changes no runtime code. New native Chrome cases on 2026-10-18:
 
-Actual screenshots and raw UI-side supporting audit/status are in
-`/Users/cckowin/Documents/Codex/2026-10-18/task/feature-browser-evidence`, with a self-contained
-HTML acceptance report and Library delivery metadata. Original baseline browser observations
-were performed by root and have audit/status JSON; no baseline screenshot file was saved.
-No original screenshot was reconstructed, and baseline was not rerun for these UI checks.
+- `browser_feature_ui_approve_001`, thread `ee85161d-5d9c-47a3-a6b7-36cdb0fa6a41`:
+  actual Approve then real locator `dblclick()` on Submit All Feedback; reads1/writes1;
+  card shows Approved — Completed, Completed button disabled (`isEnabled() == false`).
+- `browser_feature_ui_reject_001`, thread `55423d73-0caf-4c91-81db-1fc222d8c92c`:
+  actual Reject then Submit; reads1/writes0; Rejected — Completed, Completed disabled.
+- Submit is disabled before a decision and enabled after choosing. A synchronous submission
+  ref prevents duplicate UI submissions before React renders. Completion is based on the
+  actual resumed assistant response, with errors propagated and new pending approvals retained.
 
-`/repro/status.frameworkCommit` retains a baseline label and does not identify the actual feature
-runtime revision. Use the executable/nested-jar hashes in `lab/evidence/feature/build-provenance.json`.
+This run passed Studio57 + UI5 + HTTP6; typecheck and static export passed. The 59 unchanged
+framework client/server focused tests passed in the prior feature run. The full framework
+suite was not run. No business idempotency logic was added.
 
-## Shutdown
+Screenshots/report and browser audit/status: workspace `feature-browser-evidence`, copied to
+`lab/evidence/feature-ui/browser`. New build hashes and runtime PIDs are recorded in
+`lab/evidence/feature-ui/build-provenance.json`. The original baseline evidence is preserved;
+no original baseline screenshot file was saved or reconstructed.
 
-Do not stop unrelated services. For the currently verified run, client PID=26308 and remote
-PID=24697; after confirming those PIDs still belong to this experiment:
+`/repro/status.frameworkBaseCommit` explicitly identifies upstream base `17e26ff6...`, not the
+runtime revision. Use the provenance executable and four matching nested jar hashes for runtime.
+
+### Reproduce the UI build
+
+The upstream tracked pnpm lock is stale relative to its existing manifest. No dependency
+manifest or upstream lock upgrade was committed. This experiment's resolved lock is archived
+at `lab/evidence/feature-ui/build/pnpm-lock.build.yaml`, with its SHA256 in build-provenance.
+To reproduce, copy `spring-ai-alibaba-studio/agent-chat-ui` to a temporary build directory
+(exclude node_modules/.next/out), copy that resolved lock as `pnpm-lock.yaml`, and run:
 
 ```bash
-kill 26308 24697
+pnpm install --frozen-lockfile --store-dir /Users/cckowin/test/spring-ai-alibaba-lab/pnpm-store
+pnpm exec tsc --noEmit
+node --experimental-strip-types --test src/lib/resume-feedback.test.mjs
+NEXT_TELEMETRY_DISABLED=1 pnpm run build:static
 ```
 
-To stop only this experiment's Nacos through its guarded launcher:
+The configured static build exports to the sibling Studio resources directory; preserve that
+relative directory structure in the temporary copy. Copy the resulting complete chatui export
+back to Studio resources before Maven packaging. Build Studio with isolated m2-feature, then
+package this app as documented above. Runtime code commit already contains the generated export.
+
+## Startup and shutdown
+
+Keep existing Nacos running. Start `run-feature.sh remote`, wait for its automatic Nacos
+registration success, then start `run-feature.sh client`. Do not restart Nacos for UI changes.
+Current remote PID66606 and client PID67634 listen only on 127.0.0.1:18081/18080.
+Confirm the PIDs still run this exact experimental JAR before stopping only these processes:
 
 ```bash
+ps -p 67634,66606 -o pid=,command=
+kill 67634 66606
+```
+
+Nacos has a separate guarded launcher (only use when explicitly closing the environment):
+
+```bash
+python3 /Users/cckowin/test/spring-ai-alibaba-lab/nacos-lab.py status
 python3 /Users/cckowin/test/spring-ai-alibaba-lab/nacos-lab.py stop
 ```
 
-Start Nacos with the same launcher using `start`; start remote profile, wait for its Nacos
-registration success, then start client profile. Existing services were left running for review.
+Its console is `http://127.0.0.1:18880/index.html`. User personally completed administrator
+initialization and login; real SDK registration/discovery succeeded. Credentials were not
+read or set by the agent. Both applications remain running for independent review.
