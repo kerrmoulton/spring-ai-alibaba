@@ -15,12 +15,13 @@ import { useThreads } from "./Thread";
 import { toast } from "sonner";
 import { createApiClient, ToolFeedbackDTO } from "@/lib/spring-ai-api";
 import { UIMessage, createUIMessage, fromMessageDTO } from "@/types/messages";
+import { FeedbackResumeOutcome, FeedbackResumeTracker } from "@/lib/resume-feedback";
 
 interface StreamContextType {
   messages: UIMessage[];
   isStreaming: boolean;
   sendMessage: (content: string) => Promise<void>;
-  resumeFeedback: (toolFeedbacks: ToolFeedbackDTO[]) => Promise<void>;
+  resumeFeedback: (toolFeedbacks: ToolFeedbackDTO[]) => Promise<FeedbackResumeOutcome>;
   clearMessages: () => void;
 }
 
@@ -343,21 +344,17 @@ export const StreamProvider: React.FC<StreamProviderProps> = ({ children }) => {
   const resumeFeedback = useCallback(
     async (toolFeedbacks: ToolFeedbackDTO[]) => {
       if (!currentThreadId) {
-        toast.error("No active thread");
-        return;
+        throw new Error("No active thread");
       }
       if (mode === 'agent' && !appName) {
-        toast.error("No agent selected.");
-        return;
+        throw new Error("No agent selected.");
       }
       if (mode === 'graph' && !selectedGraph) {
-        toast.error("No graph selected.");
-        return;
+        throw new Error("No graph selected.");
       }
 
       if (mode === 'graph') {
-        toast.info("Resume with tool feedback is not yet supported for graphs.");
-        return;
+        throw new Error("Resume with tool feedback is not yet supported for graphs.");
       }
 
       setIsStreaming(true);
@@ -375,6 +372,7 @@ export const StreamProvider: React.FC<StreamProviderProps> = ({ children }) => {
               abortControllerRef.current.signal
             );
 
+        const resumeResult = new FeedbackResumeTracker();
         let isFirstChunk = true;
         console.log('[Stream] Starting to process resume agent responses...');
 
@@ -386,6 +384,8 @@ export const StreamProvider: React.FC<StreamProviderProps> = ({ children }) => {
             console.log('[Stream] Skipping heartbeat message');
             continue;
           }
+
+          resumeResult.accept(agentResponse);
 
           // Use chunk for streaming updates if available
           if (agentResponse.chunk) {
@@ -466,14 +466,16 @@ export const StreamProvider: React.FC<StreamProviderProps> = ({ children }) => {
         }
 
         console.log('[Stream] Resume streaming complete');
+        return resumeResult.finish();
       } catch (error: any) {
         if (error.name === "AbortError") {
           console.log("Resume request was aborted");
-          toast.info("Request cancelled");
+          // The submitting card must receive cancellation as a failure, not completion.
         } else {
           console.error("Failed to resume with feedback:", error);
-          toast.error(error.message || "Failed to resume execution");
+          // The submitting card owns the visible error state.
         }
+        throw error;
       } finally {
         setIsStreaming(false);
         abortControllerRef.current = null;

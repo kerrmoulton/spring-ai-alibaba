@@ -9,7 +9,7 @@ import uuid
 
 BASE='http://127.0.0.1:18080'
 REMOTE='http://127.0.0.1:18081'
-OUT=pathlib.Path('/Users/cckowin/test/spring-ai-alibaba-lab/evidence/feature/http')
+OUT=pathlib.Path('/Users/cckowin/test/spring-ai-alibaba-lab/evidence/feature-ui/http')
 OUT.mkdir(parents=True,exist_ok=True)
 RUN='nacos-feature-'+uuid.uuid4().hex[:8]
 RESULTS=[]

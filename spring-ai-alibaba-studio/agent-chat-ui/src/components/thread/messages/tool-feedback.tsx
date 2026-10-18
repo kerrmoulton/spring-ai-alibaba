@@ -1,5 +1,6 @@
 import { UIMessage, isToolRequestConfirmMessage, ToolFeedback, ToolCall } from "@/types/messages";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { FeedbackResumeOutcome } from "@/lib/resume-feedback";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronUp, CheckCircle, XCircle, Edit, Send, Zap } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -322,6 +323,10 @@ export function ToolFeedbackConfirm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   // Track if feedback has been submitted for this message (prevent duplicate submissions)
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [resumeOutcome, setResumeOutcome] = useState<FeedbackResumeOutcome | null>(null);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
+  // A synchronous guard also covers a second click before React commits state.
+  const submissionStarted = useRef(false);
 
   console.log('[ToolFeedbackConfirm] Rendering:', {
     id: message.id,
@@ -365,7 +370,7 @@ export function ToolFeedbackConfirm({
 
   const handleSubmitFeedback = async () => {
     // Prevent duplicate submissions
-    if (isSubmitted || isSubmitting) {
+    if (isSubmitted || submissionStarted.current) {
       toast.warning("Feedback has already been submitted");
       return;
     }
@@ -378,6 +383,8 @@ export function ToolFeedbackConfirm({
       return;
     }
 
+    submissionStarted.current = true;
+    setSubmissionError(null);
     setIsSubmitting(true);
 
     try {
@@ -396,16 +403,18 @@ export function ToolFeedbackConfirm({
       console.log('[ToolFeedbackConfirm] Submitting feedback:', feedbackForApi);
 
       // Call resume API (SSE stream)
-      await stream.resumeFeedback(feedbackForApi);
+      const outcome = await stream.resumeFeedback(feedbackForApi);
+      setResumeOutcome(outcome);
 
       // Mark as submitted to prevent duplicate submissions
       setIsSubmitted(true);
-      setIsSubmitting(false);
-
-      toast.success("Feedback submitted successfully");
+      toast.success(outcome === "completed" ? "Execution completed" : "Further approval required");
     } catch (error: any) {
       console.error('[ToolFeedbackConfirm] Failed to submit feedback:', error);
       toast.error(error.message || "Failed to submit feedback");
+      setSubmissionError(error.message || "Failed to submit feedback");
+      submissionStarted.current = false;
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -414,6 +423,9 @@ export function ToolFeedbackConfirm({
   const hasAnyFeedback = Object.keys(feedbackState).length > 0;
   const pendingCount = toolFeedback.filter(tf => !feedbackState[tf.id]).length;
   const completedCount = toolFeedback.length - pendingCount;
+  const allRejected = toolFeedback.every(tf => feedbackState[tf.id]?.result === "REJECTED");
+  const allApproved = toolFeedback.every(tf => feedbackState[tf.id]?.result === "APPROVED");
+  const completedTitle = allRejected ? "Rejected — Completed" : allApproved ? "Approved — Completed" : "Feedback Completed";
 
   return (
     <div className="group flex flex-col gap-3">
@@ -429,7 +441,9 @@ export function ToolFeedbackConfirm({
           <div className="flex items-center gap-2">
             <CheckCircle className="size-5" />
             <span className="font-medium">
-              {isSubmitted ? "Feedback Submitted - Processing..." : "Tool Execution Confirmation Required"}
+              {isSubmitted
+                ? resumeOutcome === "approval-required" ? "Decision Submitted — Further Approval Required" : completedTitle
+                : isSubmitting ? "Feedback Submitted — Processing..." : "Tool Execution Confirmation Required"}
             </span>
           </div>
           {!isSubmitted && !isSubmitting && toolFeedback.length > 1 && (
@@ -543,7 +557,7 @@ export function ToolFeedbackConfirm({
               ) : isSubmitted ? (
                 <>
                   <CheckCircle className="size-4 mr-2" />
-                  Submitted
+                  {resumeOutcome === "completed" ? "Completed" : "Submitted"}
                 </>
               ) : (
                 <>
@@ -555,21 +569,28 @@ export function ToolFeedbackConfirm({
           </div>
         )}
 
-        {/* Submitted status message */}
-        {isSubmitted && (
+        {/* Processing ends only after an actual response or another approval request. */}
+        {(isSubmitting || isSubmitted) && (
           <div className="flex justify-center pt-2 border-t border-gray-300">
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-              >
-                <CheckCircle className="size-4 text-green-600" />
-              </motion.div>
+            <div className="flex items-center gap-2 text-sm text-gray-600" role="status">
+              {isSubmitting ? (
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: "linear" }}>
+                  <CheckCircle className="size-4 text-green-600" />
+                </motion.div>
+              ) : <CheckCircle className="size-4 text-green-600" />}
               <span className="font-medium">
-                Feedback submitted. Waiting for agent response...
+                {isSubmitting ? "Feedback submitted. Waiting for agent response..."
+                  : resumeOutcome === "approval-required" ? "Review the next approval request below."
+                  : allRejected ? "Rejection applied. Execution completed. No further submission is needed."
+                  : "Execution completed. No further submission is needed."}
               </span>
             </div>
           </div>
+        )}
+        {submissionError && (
+          <p className="text-sm text-red-700" role="alert">
+            Submission did not complete: {submissionError}. Review the result before retrying.
+          </p>
         )}
 
         {!hasAnyFeedback && !isSubmitted && (

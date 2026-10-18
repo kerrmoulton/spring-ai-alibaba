@@ -223,7 +223,7 @@ public class ReproApplication {
             record("business.write",v);return v;
         }
         static void increment(String id,String name){COUNTS.computeIfAbsent(id,k->new ConcurrentHashMap<>(Map.of("reads",0,"writes",0))).merge(name,1,Integer::sum);}
-        @GetMapping("/repro/status") Map<String,Object> status(){return Map.of("frameworkCommit","17e26ff6fe951d605771c1845229ca3edb043634","counts",COUNTS,"events",AUDIT.size(),"approvalBridge",true,"nativeStudio","/chatui/","businessApiBase",BASE,"model","deterministic local mock; no paid model");}
+        @GetMapping("/repro/status") Map<String,Object> status(){return Map.of("frameworkBaseCommit","17e26ff6fe951d605771c1845229ca3edb043634","counts",COUNTS,"events",AUDIT.size(),"approvalBridge",true,"nativeStudio","/chatui/","businessApiBase",BASE,"model","deterministic local mock; no paid model");}
         @GetMapping("/repro/audit") List<Map<String,Object>> audit(){return AUDIT;}
     }
 }
