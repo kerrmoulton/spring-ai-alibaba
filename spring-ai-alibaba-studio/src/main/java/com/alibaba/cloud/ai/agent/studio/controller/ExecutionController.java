@@ -188,6 +188,9 @@ public class ExecutionController {
 
 	@PostMapping(value = "/resume_sse", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
 	public Flux<ServerSentEvent<String>> agentResumeSse(@RequestBody AgentResumeRequest request) {
+		if (request == null) {
+			return Flux.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, "request cannot be null"));
+		}
 		if (request.appName == null || request.appName.trim().isEmpty()) {
 			log.warn(
 					"appName cannot be null or empty in SSE request for appName: {}, session: {}",
@@ -205,41 +208,29 @@ public class ExecutionController {
 					new ResponseStatusException(HttpStatus.BAD_REQUEST, "threadId cannot be null or empty"));
 		}
 
+		InterruptionMetadata humanFeedback;
+		try {
+			humanFeedback = InterruptionMetadata.builder()
+					.toolFeedbacks(ToolRequestConfirmMessageDTO.convertToolFeedbacks(request.toolFeedbacks))
+					.build();
+		}
+		catch (IllegalArgumentException e) {
+			return Flux.error(new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e));
+		}
+
 		try {
 			Agent agent = agentLoader.loadAgent(request.appName);
-
-			InterruptionMetadata.Builder metadataBuilder = InterruptionMetadata.builder();
-
-			// Convert ToolFeedback from request to InterruptionMetadata.ToolFeedback
-			if (request.toolFeedbacks != null && !request.toolFeedbacks.isEmpty()) {
-				for (ToolRequestConfirmMessageDTO.ToolFeedback toolFeedback : request.toolFeedbacks) {
-					// Convert FeedbackResult from DTO to InterruptionMetadata enum
-					InterruptionMetadata.ToolFeedback.FeedbackResult result =
-							toolFeedback.getResult() != null
-									? InterruptionMetadata.ToolFeedback.FeedbackResult.valueOf(toolFeedback.getResult()
-									.name())
-									: InterruptionMetadata.ToolFeedback.FeedbackResult.APPROVED;
-
-					// Create InterruptionMetadata.ToolFeedback
-					InterruptionMetadata.ToolFeedback feedback = new InterruptionMetadata.ToolFeedback(
-							toolFeedback.getId(),
-							toolFeedback.getName(),
-							toolFeedback.getArguments(),
-							result,
-							toolFeedback.getDescription()
-					);
-
-					metadataBuilder.addToolFeedback(feedback);
-				}
-			}
 
 			RunnableConfig runnableConfig = RunnableConfig.builder()
 					.threadId(request.threadId)
 					.addMetadata("user_id", request.userId)
-					.addHumanFeedback(metadataBuilder.build())
+					.addHumanFeedback(humanFeedback)
 					.build();
 
 			return executeAgent(null, agent, runnableConfig);
+		}
+		catch (ResponseStatusException e) {
+			return Flux.error(e);
 		}
 		catch (Exception e) {
 			log.error("Error during agent run for session {}", request.threadId, e);

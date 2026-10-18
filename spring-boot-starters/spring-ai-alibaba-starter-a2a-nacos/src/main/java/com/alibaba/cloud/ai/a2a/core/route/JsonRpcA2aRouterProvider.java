@@ -27,13 +27,15 @@ import org.springframework.web.servlet.function.ServerResponse;
 
 import java.io.IOException;
 import java.time.Duration;
-import java.util.function.Consumer;
 
 import io.a2a.spec.JSONRPCResponse;
 import io.a2a.spec.TaskStatusUpdateEvent;
 import io.a2a.util.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import reactor.core.Disposable;
+import reactor.core.Disposables;
+import reactor.core.Exceptions;
 import reactor.core.publisher.Flux;
 
 /**
@@ -120,36 +122,41 @@ public class JsonRpcA2aRouterProvider implements A2aRouterProvider<JsonRpcA2aReq
 		}
 
 		private ServerResponse buildSseResponse(Flux<?> result) {
-			return ServerResponse.sse(sseBuilder -> {
-				sseBuilder.onComplete(() -> {
-					log.debug("Agent SSE connection completed.");
-				});
-				sseBuilder.onTimeout(() -> {
-					log.debug("Agent SSE connection timeout.");
-				});
-				result.subscribe((Consumer<Object>) o -> {
-					if (o instanceof JSONRPCResponse) {
-						try {
-							String sseBody = Utils.OBJECT_MAPPER.writeValueAsString(o);
-							if (log.isDebugEnabled()) {
-								log.debug("send sse body to agent: {}", sseBody);
-							}
-							sseBuilder.data(sseBody);
-							if (((JSONRPCResponse<?>) o).getResult() instanceof TaskStatusUpdateEvent) {
-								TaskStatusUpdateEvent event = (TaskStatusUpdateEvent) ((JSONRPCResponse<?>) o).getResult();
-								if (event.isFinal()) {
-									sseBuilder.complete();
-								}
-							}
-						}
-						catch (IOException e) {
-							sseBuilder.error(e);
-						}
-					}
-				});
-			}, Duration.ZERO);
+			return JsonRpcA2aRouterProvider.sseResponse(result);
 		}
 
+	}
+
+	static ServerResponse sseResponse(Flux<?> result) {
+		return ServerResponse.sse(sseBuilder -> {
+			// A synchronous source can finish before subscribe returns. A disposed swap
+			// immediately disposes a late subscription, avoiding that lifecycle race.
+			Disposable.Swap subscription = Disposables.swap();
+			sseBuilder.onComplete(subscription::dispose);
+			sseBuilder.onTimeout(() -> {
+				subscription.dispose();
+				sseBuilder.complete();
+			});
+			sseBuilder.onError(error -> subscription.dispose());
+			subscription.update(result.takeUntil(value -> value instanceof JSONRPCResponse<?> response
+					&& (response.getError() != null || response.getResult() instanceof TaskStatusUpdateEvent event && event.isFinal()))
+				.subscribe(value -> {
+					if (value instanceof JSONRPCResponse<?>) {
+						try {
+							sseBuilder.data(Utils.OBJECT_MAPPER.writeValueAsString(value));
+						}
+						catch (IOException e) {
+							throw Exceptions.propagate(e);
+						}
+					}
+				}, error -> {
+					subscription.dispose();
+					sseBuilder.error(error);
+				}, () -> {
+					subscription.dispose();
+					sseBuilder.complete();
+				}));
+		}, Duration.ZERO);
 	}
 
 }

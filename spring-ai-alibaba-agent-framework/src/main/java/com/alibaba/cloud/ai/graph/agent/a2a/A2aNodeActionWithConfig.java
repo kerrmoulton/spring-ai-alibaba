@@ -79,6 +79,10 @@ public class A2aNodeActionWithConfig implements NodeActionWithConfig {
 
 	private CompileConfig parentCompileConfig;
 
+	private boolean approvalBridge;
+
+	private A2aApprovalClient approvalClient = new A2aApprovalClient();
+
 
 	public A2aNodeActionWithConfig(AgentCardWrapper agentCard, String agentName, boolean includeContents, String outputKeyToParent, String instruction, boolean streaming) {
 		this.agentName = agentName;
@@ -96,9 +100,28 @@ public class A2aNodeActionWithConfig implements NodeActionWithConfig {
 		this.shareState = shareState;
 	}
 
+	public A2aNodeActionWithConfig(AgentCardWrapper agentCard, String agentName, boolean includeContents,
+			String outputKeyToParent, String instruction, boolean streaming, boolean shareState,
+			CompileConfig compileConfig, boolean approvalBridge) {
+		this(agentCard, agentName, includeContents, outputKeyToParent, instruction, streaming, shareState, compileConfig);
+		this.approvalBridge = approvalBridge;
+	}
+
+	A2aNodeActionWithConfig(AgentCardWrapper agentCard, String agentName, boolean includeContents,
+			String outputKeyToParent, String instruction, boolean streaming, boolean shareState,
+			CompileConfig compileConfig, boolean approvalBridge, A2aApprovalClient approvalClient) {
+		this(agentCard, agentName, includeContents, outputKeyToParent, instruction, streaming, shareState,
+				compileConfig, approvalBridge);
+		this.approvalClient = java.util.Objects.requireNonNull(approvalClient, "approvalClient");
+	}
+
 	@Override
 	public Map<String, Object> apply(OverAllState state, RunnableConfig config) throws Exception {
 		RunnableConfig subGraphRunnableConfig = getSubGraphRunnableConfig(config);
+		if (approvalBridge) {
+			return approvalClient.apply(agentCard, agentName, outputKeyToParent, state, config,
+					subGraphRunnableConfig, streaming, () -> getEffectiveInstruction(state));
+		}
 		if (streaming) {
 			AsyncGenerator<NodeOutput> generator = createStreamingGenerator(state, subGraphRunnableConfig);
 			// Convert AsyncGenerator to Flux using the new toFlux() method

@@ -22,9 +22,12 @@ import org.springframework.ai.chat.messages.AssistantMessage;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
@@ -108,33 +111,14 @@ public class ToolRequestConfirmMessageDTO implements MessageDTO {
 	 * @param state the overall state at the time of interruption
 	 */
 	public InterruptionMetadata toInterruptionMetadata(String nodeId, OverAllState state) {
-		InterruptionMetadata.Builder builder = InterruptionMetadata.builder(nodeId, state);
+		List<InterruptionMetadata.ToolFeedback> feedbacks = convertToolFeedbacks(this.toolFeedback);
+		InterruptionMetadata.Builder builder = InterruptionMetadata.builder(nodeId, state)
+				.toolFeedbacks(feedbacks);
 
 		// Set metadata
 		if (this.metadata != null) {
 			for (Map.Entry<String, Object> entry : this.metadata.entrySet()) {
 				builder.addMetadata(entry.getKey(), entry.getValue());
-			}
-		}
-
-		// Convert ToolFeedback to InterruptionMetadata.ToolFeedback
-		if (this.toolFeedback != null && !this.toolFeedback.isEmpty()) {
-			for (ToolFeedback feedback : this.toolFeedback) {
-				InterruptionMetadata.ToolFeedback.FeedbackResult result =
-						feedback.getResult() != null
-								? InterruptionMetadata.ToolFeedback.FeedbackResult.valueOf(feedback.getResult().name())
-								: InterruptionMetadata.ToolFeedback.FeedbackResult.APPROVED;
-
-				InterruptionMetadata.ToolFeedback interruptionToolFeedback =
-						new InterruptionMetadata.ToolFeedback(
-								feedback.getId(),
-								feedback.getName(),
-								feedback.getArguments(),
-								result,
-								feedback.getDescription()
-						);
-
-				builder.addToolFeedback(interruptionToolFeedback);
 			}
 		}
 
@@ -148,6 +132,47 @@ public class ToolRequestConfirmMessageDTO implements MessageDTO {
 		}
 
 		return builder.build();
+	}
+
+	/**
+	 * Validate and convert explicit human decisions. Pending tool requests may have no
+	 * result when rendered, but must never be treated as approved when submitted.
+	 * @param toolFeedbacks the decisions submitted for the interrupted tool calls
+	 * @return the validated decisions, in submission order
+	 * @throws IllegalArgumentException if any decision is missing or ambiguous
+	 */
+	public static List<InterruptionMetadata.ToolFeedback> convertToolFeedbacks(List<ToolFeedback> toolFeedbacks) {
+		if (toolFeedbacks == null || toolFeedbacks.isEmpty()) {
+			throw new IllegalArgumentException("toolFeedbacks must contain at least one explicit decision");
+		}
+
+		Set<String> toolIds = new HashSet<>();
+		List<InterruptionMetadata.ToolFeedback> feedbacks = new ArrayList<>();
+		for (int index = 0; index < toolFeedbacks.size(); index++) {
+			ToolFeedback feedback = toolFeedbacks.get(index);
+			String field = "toolFeedbacks[" + index + "]";
+			if (feedback == null) {
+				throw new IllegalArgumentException(field + " cannot be null");
+			}
+			if (feedback.getId() == null || feedback.getId().isBlank()) {
+				throw new IllegalArgumentException(field + ".id cannot be null or blank");
+			}
+			if (!toolIds.add(feedback.getId())) {
+				throw new IllegalArgumentException(field + ".id must be unique");
+			}
+			if (feedback.getName() == null || feedback.getName().isBlank()) {
+				throw new IllegalArgumentException(field + ".name cannot be null or blank");
+			}
+			if (feedback.getResult() == null) {
+				throw new IllegalArgumentException(field + ".result must be APPROVED, REJECTED, or EDITED");
+			}
+
+			feedbacks.add(new InterruptionMetadata.ToolFeedback(feedback.getId(), feedback.getName(),
+					feedback.getArguments(),
+					InterruptionMetadata.ToolFeedback.FeedbackResult.valueOf(feedback.getResult().name()),
+					feedback.getDescription()));
+		}
+		return feedbacks;
 	}
 
 	// Getters and Setters
@@ -263,6 +288,14 @@ public class ToolRequestConfirmMessageDTO implements MessageDTO {
 			APPROVED,
 			REJECTED,
 			EDITED;
+
+			@JsonCreator(mode = JsonCreator.Mode.DELEGATING)
+			public static FeedbackResult fromValue(String value) {
+				if (value == null) {
+					throw new IllegalArgumentException("result must be APPROVED, REJECTED, or EDITED");
+				}
+				return FeedbackResult.valueOf(value);
+			}
 		}
 	}
 

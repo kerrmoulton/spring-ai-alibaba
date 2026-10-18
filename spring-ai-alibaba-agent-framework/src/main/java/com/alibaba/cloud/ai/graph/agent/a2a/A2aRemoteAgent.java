@@ -50,6 +50,11 @@ public class A2aRemoteAgent extends BaseAgent {
 
 	private boolean shareState;
 
+	private boolean approvalBridge;
+
+	// Node factories are invoked again on resume, so correlation belongs to the agent.
+	private final A2aApprovalClient approvalClient = new A2aApprovalClient();
+
 	// Private constructor for Builder pattern
 	private A2aRemoteAgent(Builder builder) {
 		super(builder.name, builder.description, builder.includeContents, builder.returnReasoningContents, builder.outputKey, builder.outputKeyStrategy);
@@ -60,6 +65,7 @@ public class A2aRemoteAgent extends BaseAgent {
 		this.streaming = builder.streaming;
 		this.instruction = builder.instruction;
 		this.shareState = builder.shareState;
+		this.approvalBridge = builder.approvalBridge;
 	}
 
 	@Override
@@ -75,7 +81,7 @@ public class A2aRemoteAgent extends BaseAgent {
 		StateGraph graph = new StateGraph(name, this.keyStrategyFactory);
 		graph.addNode("A2aNode", AsyncNodeActionWithConfig.node_async(
 				new A2aNodeActionWithConfig(agentCard, name, includeContents, outputKey, instruction, streaming,
-						this.shareState, this.compileConfig)));
+						this.shareState, this.compileConfig, this.approvalBridge, this.approvalClient)));
 		graph.addEdge(StateGraph.START, "A2aNode");
 		graph.addEdge("A2aNode", StateGraph.END);
 		return graph;
@@ -106,7 +112,7 @@ public class A2aRemoteAgent extends BaseAgent {
 
 		public A2aRemoteAgentNode(String id, boolean includeContents, boolean returnReasoningContents, String instruction, AgentCardWrapper agentCard, boolean streaming, boolean shareState, CompiledGraph subGraph) {
 			super(Objects.requireNonNull(id, "id cannot be null"),
-					(config) -> AsyncNodeActionWithConfig.node_async(new A2aNodeActionWithConfig(agentCard, subGraph.stateGraph.getName(), includeContents, A2aRemoteAgent.this.outputKey, instruction, streaming, shareState, config)));
+					(config) -> AsyncNodeActionWithConfig.node_async(new A2aNodeActionWithConfig(agentCard, subGraph.stateGraph.getName(), includeContents, A2aRemoteAgent.this.outputKey, instruction, streaming, shareState, config, A2aRemoteAgent.this.approvalBridge, A2aRemoteAgent.this.approvalClient)));
 			this.subGraph = subGraph;
 		}
 
@@ -145,6 +151,8 @@ public class A2aRemoteAgent extends BaseAgent {
 		private boolean streaming = false;
 
 		private boolean shareState = true;
+
+		private boolean approvalBridge = false;
 
 		public Builder name(String name) {
 			this.name = name;
@@ -208,6 +216,16 @@ public class A2aRemoteAgent extends BaseAgent {
 
 		public Builder shareState(boolean shareState) {
 			this.shareState = shareState;
+			return this;
+		}
+
+		/**
+		 * Opt in to the process-local Spring AI Alibaba HITL continuation profile for
+		 * A2A 0.2.5. Requires a matching server and a trusted-peer userId label.
+		 * This is not an authentication or distributed exactly-once guarantee.
+		 */
+		public Builder approvalBridge(boolean enabled) {
+			this.approvalBridge = enabled;
 			return this;
 		}
 

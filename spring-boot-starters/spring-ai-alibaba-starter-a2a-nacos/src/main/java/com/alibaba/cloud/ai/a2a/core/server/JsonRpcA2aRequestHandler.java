@@ -116,6 +116,10 @@ public class JsonRpcA2aRequestHandler implements A2aRequestHandler {
 		}
 		return Flux.from(FlowAdapters.toPublisher(publisher))
 			.map((Function<JSONRPCResponse<?>, JSONRPCResponse<?>>) jsonrpcResponse -> jsonrpcResponse)
+			// SDK 0.2.5 can publish an error response without completing its publisher.
+			// Deliver that response and end this interaction, without failing the task:
+			// a rejected approval decision must leave its pending approval recoverable.
+			.takeUntil(response -> response.getError() != null)
 			.delaySubscription(Duration.ofMillis(10));
 	}
 
